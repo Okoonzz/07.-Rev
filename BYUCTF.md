@@ -95,3 +95,115 @@ print (flag)
 Vẫn còn 1 bài nữa, nhưng bài này có kiến thức khá mới nên sẽ có trong bài viết về **BYU+DANTE**
 
 => Vậy qua những bài này, giúp nhận ra được cách hiểu của IDA về arr[sth[]] cũng như biểu diễn nó như thế nào và lấy nó ở đâu là chính xác. Và đôi khi không cần phải rev quá kĩ bởi vì phần chủ yếu để ra được flag lại nằm ở nhánh không cần thiết phải pass điều kiện trước đó.
+
+# CALC
+Đây là một bài khá hay ở giải uiu nên mình sẽ viết lại nó.
+
+Trước khi hoàn thành bài này, ta hãy nhìn vào đoạn code sau:
+
+```c++
+bool doSTH(float a){
+    return a < 0.0;
+}
+
+int main(){
+    float a = -0.0;
+    if (doSTH(a)) puts("Okk!!");
+    else puts("Ooops");
+}
+//output: Ooops
+```
+Để hiểu rõ hơn về điều này có thể tham khảo [tiêu chuẩn IEE 754.](https://en.wikipedia.org/wiki/IEEE_754#Special_values)
+
+Sau khi đọc được đoạn mã giả trả về từ IDA thì thấy được đoạn while như sau:
+
+![](https://hackmd.io/_uploads/Sy8eE2S93.png)
+
+Đoạn trên tức là chỉ cần tính toán có kết quả `8573.8567` thì sẽ trả về được `correct`. Nhưng khi tiến hành nhập vào nó chỉ trả về fake flag
+
+![](https://hackmd.io/_uploads/SJzTNnBqn.png)
+
+Lúc này, để ý rằng phía dưới vẫn còn một đoạn nữa chưa biết nó là gì 
+
+![](https://hackmd.io/_uploads/ryb-S3S5n.png)
+
+Ở đây, có một vòng lặp được lặp lại 368 lần. Nó thực hiện hàm `calculate` sau đó có thêm một hàm `gauntlet` để kiểm tra. Tiến hành phân tích xem hàm này có chức năng gì.
+
+![](https://hackmd.io/_uploads/B1C_Bnrc2.png)
+
+Nhìn qua thấy được rằng đây là một hàm kiểu `bool` kiểm tra xem có phải là "số âm, không phải số và Inf". Khi vào kiểm tra các hàm này thì chỉ có kiểm tra số âm thì sẽ có kiểu trả về thay đổi còn hai hàm còn lại không hề kiểm tra mà trả về thẳng là `0`.
+
+Như đã đọc bài viết ở trên, bây giờ ta sẽ làm lại hàm `gauntlet` này để khi kiểm tra nó sẽ trả về 1.
+
+*Đây là một script khá hay mình tham khảo được:*
+
+```c++
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+typedef struct {
+    long op;
+    double a;
+    double b;
+} calculation;
+
+double do_op(calculation calc) {
+    if (calc.op == '%') {
+        return fmod(calc.a, calc.b);
+    } else if (calc.op == '+') {
+        return calc.a + calc.b;
+    } else if (calc.op == '-') {
+        return calc.a - calc.b;
+    } else if (calc.op == '*') {
+        return calc.a * calc.b;
+    } else if (calc.op == '/') {
+        return calc.a / calc.b;
+    } else if (calc.op == '^') {
+        return pow(calc.a, calc.b);
+    } else {
+        printf("oops %ld\n", calc.op);
+        return -1.0;
+    }
+}
+
+int will_flip(double input) {
+    if (signbit(input)) return 1;
+    if (isnan(input)) return 1;
+    if (isinf(input)) return 1;
+    return 0;
+}
+
+int main() {
+    unsigned char flag[47];
+    *((unsigned long*)&flag[0]) = 0x10eeb90001e1c34b;
+    *((unsigned long*)&flag[8]) = 0xcb382178a4f04bee;
+    *((unsigned long*)&flag[16]) = 0xe84683ce6b212aea;
+    *((unsigned long*)&flag[24]) = 0xa0f5cf092c8ca741;
+    *((unsigned long*)&flag[32]) = 0x20a92860082772a1;
+    *((unsigned int*)&flag[40]) = 0x35abb366;
+    *((unsigned short*)&flag[44]) = 0xe9a4;
+    flag[46] = 0;
+    
+    void* mem = malloc(0x2280);
+    FILE* blob = fopen("./A.bin", "r");
+    fread(mem, 0x2280, 1, blob);
+    fclose(blob);
+    int op_count = 0x2280 / sizeof(calculation);
+    calculation* ops = (calculation* )mem;
+    int flips = 0;
+    for (int i = 0; i < op_count; ++i) {
+        double ans = do_op(ops[i]);
+        int wf = will_flip(ans);
+        if (wf) {
+            flag[i >> 3] ^= (1 << (7 - i % 8));
+        }
+        flips += wf;
+    }
+    printf("flips: %d\n", flips);
+    printf("flag: %s\n", flag);
+    return 0;
+}
+```
+
+> Ở đây, tất cả chỉ mô phỏng lại thử thách này, chỉ khác hàm `gauntlet` tức là `will_flip` trong script sẽ được làm lại và khi nó gặp các trường hợp này sẽ trả về 1 hết tất cả. Còn phần `A.bin` chính là phần `calculate` trong vòng lặp for, tức là khi nhập input đúng ban đầu vào thì chương trình sẽ tính toán hàm này ta chỉ việc dump các byte ở đây ra và sẽ so sánh từng trường hợp với hàm `gauntlet` được làm lại và nó sẽ nằm ở `v78`.
