@@ -151,26 +151,17 @@ func rev_shuffle(enc string, translate []uint32) []byte {
 }
 
 func gen_table(str_len int, candidate uint32) []uint32 {
-
 	idx := make([]uint32, 0, str_len)
-	uniq := map[uint32]bool{}
-
+	// Đánh dấu đã có hay chưa
+	used := make(map[uint32]bool)
 	rand.Seed(int64(candidate))
-
-	for {
-		if len(uniq) == str_len {
-			break
-		}
-
+	for len(idx) < str_len {
 		r := uint32(rand.Intn(str_len))
-
-		if exists, ok := uniq[r]; !ok || !exists {
+		if !used[r] {
 			idx = append(idx, r)
+			used[r] = true
 		}
-
-		uniq[r] = true
 	}
-
 	return idx
 }
 
